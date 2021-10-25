@@ -16,7 +16,7 @@ from cirtap.mirror import (
     create_genome_jobs,
 )
 from cirtap.mirror import mirror_genomes_dir
-from cirtap.mailer import send_start_mail
+from cirtap.mailer import send_start_mail, send_exit_mail
 
 __author__ = "papanikos"
 __copyright__ = "papanikos"
@@ -155,14 +155,14 @@ def mirror(
 ):
     """Mirror all data from ftp.patricbrc.org in the specified DB_DIR"""
 
+    setup_logging(loglevel)
+
     if progress and (loglevel == "debug"):
         _logger.info(
             "Unsetting `progress` option because it conflicts with "
             "`loglevel debug`"
         )
         progress = False
-
-    setup_logging(loglevel)
 
     release_notes_dir = db_dir / pathlib.Path("RELEASE_NOTES")
     genomes_dir = db_dir / pathlib.Path("genomes")
@@ -229,25 +229,36 @@ def mirror(
     ]
     genome_jobs = [job for job in genome_jobs if job in ten_targets]
 
-    if (
-        len(genome_jobs) != 0 and check_genomes is True
-    ) or force_check is True:
-        finished_jobs = mirror_genomes_dir(
-            genome_jobs, genomes_dir, jobs, progress_bar=progress
-        )
-        new_genomes_processed = processed_genomes.union(set(finished_jobs))
-        processed_genomes_txt = cache_dir / pathlib.Path(
-            "processed_genomes.txt"
-        )
-        # Re-write the file with all new and old ids
-        with open(processed_genomes_txt, "w") as fout:
-            for genome_id in new_genomes_processed:
-                fout.write(f"{genome_id}\n")
-    else:
-        _logger.info(
-            "All genomes for this version of RELEASE_NOTES seem "
-            "to have been properly processed"
-        )
+    try:
+        if (
+            len(genome_jobs) != 0 and check_genomes is True
+        ) or force_check is True:
+            finished_jobs = mirror_genomes_dir(
+                genome_jobs, genomes_dir, jobs, progress_bar=progress
+            )
+            new_genomes_processed = processed_genomes.union(set(finished_jobs))
+            processed_genomes_txt = cache_dir / pathlib.Path(
+                "processed_genomes.txt"
+            )
+            # Re-write the file with all new and old ids
+            with open(processed_genomes_txt, "w") as fout:
+                for genome_id in new_genomes_processed:
+                    fout.write(f"{genome_id}\n")
+        else:
+            _logger.info(
+                "All genomes for this version of RELEASE_NOTES seem "
+                "to have been properly processed"
+            )
+    except Exception as e:
+        if notify:
+            recipients = [str(i).strip() for i in notify.split(",")]
+            send_exit_mail(recipients, str(e))
+
+        raise
+
+    if notify:
+        recipients = [str(i).strip() for i in notify.split(",")]
+        send_exit_mail(recipients)
 
 
 cli.add_command(mirror)
