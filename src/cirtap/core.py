@@ -130,6 +130,16 @@ def cli():
     help="Comma (,) separated list of emails provided as a string. E.g. "
     "'user1@mail.com,user2@anothermail.com'",
 )
+@click.option(
+    "--progress",
+    is_flag=True,
+    required=False,
+    show_default=True,
+    help="(Experimental) Print a progress bar when downloading genomes. This "
+    "option cannot be set with `--loglevel debug`. If they are both supplied, "
+    "progress will not be shown and the more descriptive debugging messages "
+    "will be printed to stderr instead",
+)
 def mirror(
     db_dir,
     loglevel,
@@ -141,8 +151,16 @@ def mirror(
     archive_notes,
     resume,
     force_check,
+    progress,
 ):
     """Mirror all data from ftp.patricbrc.org in the specified DB_DIR"""
+
+    if progress and (loglevel == "debug"):
+        _logger.info(
+            "Unsetting `progress` option because it conflicts with "
+            "`loglevel debug`"
+        )
+        progress = False
 
     setup_logging(loglevel)
 
@@ -195,7 +213,6 @@ def mirror(
             )
         except:
             _logger.debug("Failed to send email")
-            raise
 
     # Testing
     ten_targets = [
@@ -215,7 +232,9 @@ def mirror(
     if (
         len(genome_jobs) != 0 and check_genomes is True
     ) or force_check is True:
-        finished_jobs = mirror_genomes_dir(genome_jobs, genomes_dir, jobs)
+        finished_jobs = mirror_genomes_dir(
+            genome_jobs, genomes_dir, jobs, progress_bar=progress
+        )
         new_genomes_processed = processed_genomes.union(set(finished_jobs))
         processed_genomes_txt = cache_dir / pathlib.Path(
             "processed_genomes.txt"

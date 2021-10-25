@@ -175,13 +175,22 @@ def sync_single_dir(genomes_dir, genome_id, retries=3, write_info=True):
             break
 
         except ftplib.all_errors as ftp_err:
-            _logger.debug("Failed syncing  {}".format(genome_id))
-            _logger.debug("Error was : {}".format(ftp_err))
-            attempt += 1
-            _logger.debug(
-                "Sleeping for {} s before retrying".format(attempt * 60)
-            )
-            time.sleep(attempt * 60)
+            if attempt == retries + 1:
+                _logger.debug("Failed syncing {}".format(genome_id))
+                _logger.debug(
+                    "Removing directory that might contain corrupted files "
+                    "at {}".format(local_dirpath)
+                )
+                shutil.rmtree(local_dirpath.resolve())
+                raise
+            else:
+                _logger.debug("Failed syncing  {}".format(genome_id))
+                _logger.debug("Error was : {}".format(ftp_err))
+                attempt += 1
+                _logger.debug(
+                    "Sleeping for {} s before retrying".format(attempt * 60)
+                )
+                time.sleep(attempt * 60)
 
         except KeyboardInterrupt:
             _logger.debug("Ctrl+C signal detected")
@@ -191,6 +200,8 @@ def sync_single_dir(genomes_dir, genome_id, retries=3, write_info=True):
             )
 
             shutil.rmtree(local_dirpath.resolve())
+        except:
+            raise
 
     return genome_id
 
