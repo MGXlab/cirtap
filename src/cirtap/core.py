@@ -215,19 +215,19 @@ def mirror(
             _logger.debug("Failed to send email")
 
     # Testing
-    ten_targets = [
-        "100053.5",
-        "100.11",
-        "100053.4",
-        "100.9",
-        "1123738.3",
-        "1000562.3",
-        "100053.8",
-        "469009.4",
-        "1309411.5",
-        "100053.6",
-    ]
-    genome_jobs = [job for job in genome_jobs if job in ten_targets]
+#    ten_targets = [
+#        "100053.5",
+#        "100.11",
+#        "100053.4",
+#        "100.9",
+#        "1123738.3",
+#        "1000562.3",
+#        "100053.8",
+#        "469009.4",
+#        "1309411.5",
+#        "100053.6",
+#    ]
+#    genome_jobs = [job for job in genome_jobs if job in ten_targets]
 
     try:
         if (
