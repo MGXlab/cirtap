@@ -16,6 +16,7 @@ from cirtap.mirror import (
     create_genome_jobs,
 )
 from cirtap.mirror import mirror_genomes_dir
+from cirtap.index import contents, all_data, write_index
 from cirtap.mailer import send_start_mail, send_exit_mail
 
 __author__ = "papanikos"
@@ -215,19 +216,19 @@ def mirror(
             _logger.debug("Failed to send email")
 
     # Testing
-#    ten_targets = [
-#        "100053.5",
-#        "100.11",
-#        "100053.4",
-#        "100.9",
-#        "1123738.3",
-#        "1000562.3",
-#        "100053.8",
-#        "469009.4",
-#        "1309411.5",
-#        "100053.6",
-#    ]
-#    genome_jobs = [job for job in genome_jobs if job in ten_targets]
+    #    ten_targets = [
+    #        "100053.5",
+    #        "100.11",
+    #        "100053.4",
+    #        "100.9",
+    #        "1123738.3",
+    #        "1000562.3",
+    #        "100053.8",
+    #        "469009.4",
+    #        "1309411.5",
+    #        "100053.6",
+    #    ]
+    #    genome_jobs = [job for job in genome_jobs if job in ten_targets]
 
     try:
         if (
@@ -261,7 +262,46 @@ def mirror(
         send_exit_mail(recipients)
 
 
+@click.command()
+@click.argument(
+    "genomes-dir",
+    required=True,
+    type=pathlib.Path,
+)
+@click.argument(
+    "output-index",
+    required=True,
+    type=pathlib.Path,
+)
+@click.option(
+    "--loglevel",
+    default="INFO",
+    help="Define loglevel",
+    show_default=True,
+    required=False,
+)
+def index(genomes_dir, output_index, loglevel):
+    """Create an index of contents for all directories
+
+    This can be useful for generating valid paths before gathering inputs.
+    The output_index is a tab-separated file with each column representing
+    the files that are expected to be found for a genome that has full
+    information available from both PATRIC and RefSeq. If any of the files
+    is missing the value is 0.
+
+    genomes_dir: The location where all data is stored
+
+    output_index:  The files to write all the info in
+
+    """
+    setup_logging(loglevel)
+    all_records = all_data(genomes_dir, contents)
+    write_index(all_records, output_index)
+    return
+
+
 cli.add_command(mirror)
+cli.add_command(index)
 
 
 if __name__ == "__main__":
