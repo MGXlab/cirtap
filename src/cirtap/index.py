@@ -7,6 +7,7 @@ import multiprocessing as mp
 
 _logger = logging.getLogger(__name__)
 
+## A "complete" dir listing
 # 511145.12.fna
 # 511145.12.PATRIC.faa
 # 511145.12.PATRIC.features.tab
@@ -25,10 +26,11 @@ _logger = logging.getLogger(__name__)
 # 511145.12.RefSeq.pathway.tab
 # 511145.12.RefSeq.rna.tab
 
+# TO DO
+# This is a bit awkward to use
 contents = {
     "genome": {"fna": "patric_genome"},
     "PATRIC": {
-        "cds.tab": "patric_cds",
         "faa": "patric_proteins",
         "features.tab": "patric_features",
         "ffn": "patric_functions",
@@ -59,6 +61,7 @@ contents = {
 
 
 def genome_data(genome_dir, contents):
+    """Create a dict of presence (1) | absence (0) of files in a dir"""
     genome_id = genome_dir.name
     genome_data = {"genome_id": genome_id}
 
@@ -80,7 +83,6 @@ def genome_data(genome_dir, contents):
         if fname_fields[-1] == "fna":
             col_name = contents["genome"]["fna"]
             genome_data["patric_genome"] = 1
-
         else:
             db = fname_fields[2]
             suffix = ".".join(fname_fields[3:])
@@ -90,8 +92,11 @@ def genome_data(genome_dir, contents):
                 else:
                     col_name = contents["PATRIC"][suffix]
 
-                genome_data[col_name] = int(1)
+                genome_data[col_name] = 1
 
+    # TO DO
+    # Change the contents dic to something more sane
+    ## For the files that were not found
     for d in contents.keys():
         for v in contents[d].values():
             if v not in genome_data:
@@ -101,6 +106,7 @@ def genome_data(genome_dir, contents):
 
 
 def all_data(genomes_dir, contents_dic, jobs=1):
+    """Parallelizable read of all directories in a list of dicts"""
     all_records = []
     _logger.info("Loading directories")
     dir_jobs = [(g, contents_dic) for g in genomes_dir.iterdir()]
@@ -112,11 +118,25 @@ def all_data(genomes_dir, contents_dic, jobs=1):
 
 
 def write_index(records_list, output_index):
-
+    """Create and write a pandas df to the specified file"""
+    # Grab the first record dict
     some_record = records_list[0]
+    # Map all values to integers
     dtypes = {k: "int64" for k in some_record.keys()}
+    # Except for genome id that needs to be a string
     dtypes["genome_id"] = "string"
     index_df = pd.DataFrame.from_records(records_list)
     index_df = index_df.astype(dtypes)
 
+    # Show missing genomes first
+    index_df = index_df.sort_values(by="patric_genome")
+
+    # Reorder the columns so that genome id and genome show first
+    cols_reordered = ["genome_id", "patric_genome"]
+    for col in index_df.columns.tolist():
+        if col not in cols_reordered:
+            cols_reordered.append(col)
+    index_df = index_df[cols_reordered]
+
+    # Write it
     index_df.to_csv(output_index, sep="\t", index=False)
