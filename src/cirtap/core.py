@@ -26,20 +26,7 @@ __license__ = "MIT"
 _logger = logging.getLogger(__name__)
 
 
-# ---- Python API ----
-# The functions defined in this section can be imported by users in their
-# Python scripts/interactive interpreter, e.g. via
-# `from cirtap.skeleton import fib`,
-# when using this Python module as a library.
-
-
-# ---- CLI ----
-# The functions defined in this section are wrappers around the main Python
-# API allowing them to be called directly from the terminal as a CLI
-# executable/script.
-
-
-def setup_logging(loglevel):
+def setup_logging(loglevel, logfile):
     """Setup basic logging
 
     Args:
@@ -48,14 +35,20 @@ def setup_logging(loglevel):
     numeric_level = getattr(logging, loglevel.upper(), None)
     if not isinstance(numeric_level, int):
         raise ValueError("Invalid log level: {}".format(loglevel))
-    else:
-        logformat = "[%(asctime)s - %(levelname)s:%(name)s] %(message)s"
-        logging.basicConfig(
-            level=numeric_level,
-            stream=sys.stderr,
-            format=logformat,
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
+
+    hs = [logging.StreamHandler(stream=sys.stderr)]
+    if logfile:
+        filelogger=logging.FileHandler(logfile, mode="w")
+        hs.append(filelogger)
+
+    logformat = "[%(asctime)s - %(levelname)s:%(name)s] %(message)s"
+
+    logging.basicConfig(
+        level=numeric_level,
+        handlers=hs,
+        format=logformat,
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
 
 
 @click.group(context_settings=dict(help_option_names=["-h", "--help"]))
@@ -144,6 +137,12 @@ def cli():
     "progress will not be shown and the more descriptive debugging messages "
     "will be printed to stderr instead",
 )
+@click.option(
+    "--logfile",
+    help="Write logging information in this file",
+    show_default=True,
+    required=False,
+)
 def mirror(
     db_dir,
     loglevel,
@@ -156,10 +155,11 @@ def mirror(
     resume,
     force_check,
     progress,
+    logfile
 ):
     """Mirror all data from ftp.patricbrc.org in the specified DB_DIR"""
 
-    setup_logging(loglevel)
+    setup_logging(loglevel, logfile)
     _logger.info("Full command: {}".format(' '.join(sys.argv[:])))
     _logger.info("Version: {}".format(__version__))
 
