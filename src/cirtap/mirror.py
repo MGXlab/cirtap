@@ -7,7 +7,6 @@ import pathlib
 import shutil
 import time
 from tqdm import tqdm
-from tqdm.contrib.concurrent import process_map
 
 from .common import PATRIC_FTP, RELEASE_NOTES_FILES
 from .common import get_missing_files, get_dir_md5, get_remote_dir_timestamps
@@ -19,6 +18,7 @@ _logger = logging.getLogger(__name__)
 
 
 def set_remote_version_on_summary():
+    """Use the year and month in YYYYMM format as a version"""
     with ftplib.FTP(PATRIC_FTP) as ftp:
         ftp.login()
         release_notes_times = get_remote_dir_timestamps(ftp, "RELEASE_NOTES")
@@ -30,6 +30,7 @@ def set_remote_version_on_summary():
 
 
 def set_local_version(release_dir):
+    """Try to infer version in YYYYMM format from existing data"""
     local_version = None
     local_timestamps = get_local_info(release_dir)
     if local_timestamps:
@@ -65,12 +66,13 @@ def archive_notes(release_dir, version_suffix=None):
 
 
 def check_release_dir(release_dir, archive=True):
+    """Check for updates and download if necessary"""
 
     remote_version = set_remote_version_on_summary()
     local_version = set_local_version(release_dir)
+
     if remote_version == local_version:
         _logger.info("Versions based on genome_summary are the same")
-
     if not local_version:
         local_version = "unknown_version"
 
@@ -79,7 +81,7 @@ def check_release_dir(release_dir, archive=True):
     present_files = RELEASE_NOTES_FILES.difference(missing_files)
 
     if (len(present_files) != 0) and (archive is True):
-        _logger.debug("Archiving existing RELEASE_NOTES")
+        _logger.info("Archiving existing RELEASE_NOTES")
         archive_notes(release_dir, version_suffix=local_version)
 
     # Set the new version
@@ -98,20 +100,20 @@ def check_release_dir(release_dir, archive=True):
             local_fp = release_dir / pathlib.Path(f)
             if f in present_files:
                 if remote_md5 != local_md5s[f]["md5"]:
-                    _logger.debug("Updating file: {}".format(f))
+                    _logger.info("Updating file: {}".format(f))
                     local_fp.write_bytes(contents)
                     check_genomes = True
                 else:
                     _logger.info("File: {} is up to date".format(f))
 
             elif f in missing_files:
-                _logger.debug("Fetching file: {}".format(f))
+                _logger.info("Fetching file: {}".format(f))
                 local_fp.write_bytes(contents)
                 check_genomes = True
 
             else:
                 _logger.critical("WHAT HAPPENED with {}?".format(f))
-                raise IOError
+                raise
 
     return check_genomes
 
@@ -142,6 +144,8 @@ def check_cache_dir(cache_dir):
 #    stop=tenacity.stop.stop_after_attempt(3),
 # )
 def sync_single_dir(genomes_dir, genome_id, retries=3, write_info=True):
+    """Download/update all info for the genome id"""
+
     remote_dirname = f"genomes/{genome_id}"
 
     local_dirpath = genomes_dir / pathlib.Path(genome_id)
@@ -159,6 +163,11 @@ def sync_single_dir(genomes_dir, genome_id, retries=3, write_info=True):
                 ftp.login()
                 remote_info = get_remote_dir_timestamps(ftp, remote_dirname)
                 targets = filter_files_on_mdtm(remote_info, local_info)
+                missing_files = get_missing_files(local_dirpath, list(remote_info.keys()))
+
+                if len(missing_files) != 0:
+                       targets.extend(missing_files)
+
                 if len(targets) != 0:
                     download_genome_targets(ftp, local_dirpath, targets)
                 else:
@@ -174,6 +183,7 @@ def sync_single_dir(genomes_dir, genome_id, retries=3, write_info=True):
 
             break
 
+        # Catch ftplib errors
         except ftplib.all_errors as ftp_err:
             if attempt == retries + 1:
                 _logger.debug("Failed syncing {}".format(genome_id))
@@ -192,6 +202,7 @@ def sync_single_dir(genomes_dir, genome_id, retries=3, write_info=True):
                 )
                 time.sleep(attempt * 60)
 
+        # Catch CTRL-C if user doesn't want to proceed
         except KeyboardInterrupt:
             _logger.debug("Ctrl+C signal detected")
             _logger.debug(
@@ -200,6 +211,8 @@ def sync_single_dir(genomes_dir, genome_id, retries=3, write_info=True):
             )
 
             shutil.rmtree(local_dirpath.resolve())
+            break
+        # For any other exception reraise
         except:
             raise
 
@@ -248,4 +261,3 @@ def mirror_genomes_dir(
             for res in pool.imap_unordered(parallel_sync, all_genome_jobs):
                 results.append(res)
     return results
-
