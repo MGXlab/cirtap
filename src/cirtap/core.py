@@ -99,7 +99,8 @@ def cli():
     is_flag=True,
     default=False,
     show_default=True,
-    help="Force update the genomes directory regardless of RELEASE_NTOES outcome",
+    help="Force update the genomes directory regardless of RELEASE_NOTES "
+    "outcome",
 )
 @click.option(
     "-r",
@@ -107,8 +108,9 @@ def cli():
     is_flag=True,
     default=False,
     show_default=True,
-    help="Use this to set both --skip-release-check and --skip-processed-genomes on. "
-    "Useful for resuming an unsuccessful run",
+    help="Use this to set both --skip-release-check and "
+    "--skip-processed-genomes on. "
+    "Useful for resuming a failed run",
 )
 @click.option(
     "--loglevel",
@@ -216,19 +218,19 @@ def mirror(
             _logger.debug("Failed to send email")
 
     # Testing
-    #    ten_targets = [
-    #        "100053.5",
-    #        "100.11",
-    #        "100053.4",
-    #        "100.9",
-    #        "1123738.3",
-    #        "1000562.3",
-    #        "100053.8",
-    #        "469009.4",
-    #        "1309411.5",
-    #        "100053.6",
-    #    ]
-    #    genome_jobs = [job for job in genome_jobs if job in ten_targets]
+    #ten_targets = [
+    #    "100053.5",
+    #    "100.11",
+    #    "100053.4",
+    #    "100.9",
+    #    "1123738.3",
+    #    "1000562.3",
+    #    "100053.8",
+    #    "469009.4",
+    #    "1309411.5",
+    #    "100053.6",
+    #]
+    #genome_jobs = [job for job in genome_jobs if job in ten_targets]
 
     try:
         if (
@@ -255,6 +257,7 @@ def mirror(
             recipients = [str(i).strip() for i in notify.split(",")]
             send_exit_mail(recipients, str(e))
 
+        _logger.critical("Mirror job failed with \n{}".format(e))
         raise
 
     if notify:
@@ -286,7 +289,7 @@ def mirror(
     default=1,
     show_default=True,
     help="Number of parallel reads to execute. Speeds things up when "
-    "iterating over all the data dirs"
+    "iterating over all the data dirs",
 )
 def index(genomes_dir, output_index, loglevel, jobs):
     """Create an index of contents for all directories
