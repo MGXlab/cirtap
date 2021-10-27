@@ -280,7 +280,15 @@ def mirror(
     show_default=True,
     required=False,
 )
-def index(genomes_dir, output_index, loglevel):
+@click.option(
+    "-j",
+    "--jobs",
+    default=1,
+    show_default=True,
+    help="Number of parallel reads to execute. Speeds things up when "
+    "iterating over all the data dirs"
+)
+def index(genomes_dir, output_index, loglevel, jobs):
     """Create an index of contents for all directories
 
     This can be useful for generating valid paths before gathering inputs.
@@ -295,7 +303,7 @@ def index(genomes_dir, output_index, loglevel):
 
     """
     setup_logging(loglevel)
-    all_records = all_data(genomes_dir, contents)
+    all_records = all_data(genomes_dir, contents, jobs)
     write_index(all_records, output_index)
     return
 
