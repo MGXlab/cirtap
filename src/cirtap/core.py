@@ -61,6 +61,7 @@ def setup_logging(loglevel):
 @click.group(context_settings=dict(help_option_names=["-h", "--help"]))
 @click.version_option(__version__)
 def cli():
+    """Run `cirtap COMMAND -h` for subcommand help"""
     pass
 
 
@@ -159,6 +160,8 @@ def mirror(
     """Mirror all data from ftp.patricbrc.org in the specified DB_DIR"""
 
     setup_logging(loglevel)
+    _logger.info("Full command: {}".format(' '.join(sys.argv[:])))
+    _logger.info("Version: {}".format(__version__))
 
     if progress and (loglevel == "debug"):
         _logger.info(
