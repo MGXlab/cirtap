@@ -13,14 +13,14 @@ $ pip install cirtap
 ## Usage
 
 ```
-$ cirtap -h
-
 Usage: cirtap [OPTIONS] COMMAND [ARGS]...
 
 Options:
+  --version   Show the version and exit.
   -h, --help  Show this message and exit.
 
 Commands:
+  index   Create an index of contents for all directories
   mirror  Mirror all data from ftp.patricbrc.org in the specified DB_DIR
 ```
 
