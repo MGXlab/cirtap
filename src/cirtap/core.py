@@ -17,6 +17,13 @@ from cirtap.mirror import (
 )
 from cirtap.mirror import mirror_genomes_dir
 from cirtap.index import contents, all_data, write_index
+from cirtap.collect import supported_suffixes, is_SSU
+from cirtap.collect import (
+    select_genome_ids,
+    generate_file_list,
+    collect_sequences,
+    concatenate_chunk_files,
+)
 from cirtap.mailer import send_start_mail, send_exit_mail
 
 __author__ = "papanikos"
@@ -38,7 +45,7 @@ def setup_logging(loglevel, logfile):
 
     hs = [logging.StreamHandler(stream=sys.stderr)]
     if logfile:
-        filelogger=logging.FileHandler(logfile, mode="w")
+        filelogger = logging.FileHandler(logfile, mode="w")
         hs.append(filelogger)
 
     logformat = "[%(asctime)s - %(levelname)s:%(name)s] %(message)s"
@@ -155,12 +162,12 @@ def mirror(
     resume,
     force_check,
     progress,
-    logfile
+    logfile,
 ):
     """Mirror all data from ftp.patricbrc.org in the specified DB_DIR"""
 
     setup_logging(loglevel, logfile)
-    _logger.info("Full command: {}".format(' '.join(sys.argv[:])))
+    _logger.info("Full command: {}".format(" ".join(sys.argv[:])))
     _logger.info("Version: {}".format(__version__))
 
     if progress and (loglevel == "debug"):
@@ -221,7 +228,7 @@ def mirror(
             _logger.debug("Failed to send email")
 
     # Testing
-    #ten_targets = [
+    # ten_targets = [
     #    "100053.5",
     #    "100.11",
     #    "100053.4",
@@ -232,8 +239,8 @@ def mirror(
     #    "469009.4",
     #    "1309411.5",
     #    "100053.6",
-    #]
-    #genome_jobs = [job for job in genome_jobs if job in ten_targets]
+    # ]
+    # genome_jobs = [job for job in genome_jobs if job in ten_targets]
 
     try:
         if (
@@ -320,8 +327,100 @@ def index(genomes_dir, output_index, loglevel, logfile, jobs):
     return
 
 
+@click.command()
+@click.argument("genomes-dir", required=True, type=pathlib.Path)
+@click.argument("output-path", required=True, type=pathlib.Path)
+@click.option("-i", "--index-path", required=True, type=pathlib.Path)
+@click.option(
+    "-t",
+    "--target-set",
+    type=click.Choice(["SSU", "proteins"]),
+    help="Sequence set to create. One of `SSU` (based on .PATRIC.frn) and "
+    "`proteins` (based on .PATRIC.faa)",
+)
+@click.option(
+    "-j",
+    "--jobs",
+    help="Parallel jobs to run",
+    default=1,
+    show_default=True,
+    type=int,
+)
+@click.option(
+    "--cleanup",
+    help="Remove all intermediate files produced",
+    is_flag=True,
+    default=True,
+)
+@click.option(
+    "--loglevel",
+    default="INFO",
+    help="Define loglevel",
+    show_default=True,
+    required=False,
+)
+@click.option(
+    "--logfile",
+    help="Write logging information in this file",
+    show_default=True,
+    required=False,
+)
+def collect(
+    genomes_dir,
+    index_path,
+    target_set,
+    output_path,
+    jobs,
+    loglevel,
+    logfile,
+    cleanup,
+):
+    """
+    Create sequence sets based on the installed files
+
+    Only 16S rRNA seqs and proteins are supported for now.
+
+    **ATTENTION**
+    Due to the way things are implemented any jobs number you
+    supply will be multiplied by 4.
+    """
+    setup_logging(loglevel, logfile)
+
+    filters = []
+    if target_set == "SSU":
+        target = "patric_rnas"
+        filters.append(is_SSU)
+    elif target_set == "proteins":
+        target = "patric_proteins"
+    else:
+        _logger.critical("Case of {} not covered".format(target_set))
+        sys.exit(1)
+
+    _logger.info("Reading index information")
+    genome_ids = select_genome_ids(index_path, target)
+
+    _logger.info("Generating files list")
+    files_list = generate_file_list(
+        genomes_dir, genome_ids, target, supported_suffixes
+    )
+    _logger.info(
+        "Sequences will be collected from {} files".format(len(files_list))
+    )
+
+    tmp_dir = output_path.parent / pathlib.Path("tmp")
+    tmp_dir.mkdir(exist_ok=True)
+
+    collect_sequences(files_list, tmp_dir, *filters, nthreads=jobs)
+
+    files_no, seqs_no = concatenate_chunk_files(tmp_dir, output_path, cleanup)
+    _logger.info(
+        "Collected {} sequences from {} files".format(seqs_no, files_no)
+    )
+
+
 cli.add_command(mirror)
 cli.add_command(index)
+cli.add_command(collect)
 
 
 if __name__ == "__main__":
