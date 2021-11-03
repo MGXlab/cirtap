@@ -42,6 +42,7 @@ def load_index(index_path):
 
 
 def select_genome_ids(index_path, on_col):
+    """Get a list of genome ids that have a file"""
     df = pd.read_csv(index_path, sep="\t", dtype={"genome_id": "string"})
     genome_ids = df.loc[df[on_col] == 1]["genome_id"].tolist()
     assert len(genome_ids) != 0, _logger.critical("No genome ids found")
@@ -49,6 +50,7 @@ def select_genome_ids(index_path, on_col):
 
 
 def generate_file_list(genomes_dir, genome_ids, target, suffixes_dict):
+    """Get a list of files that are going to be parsed"""
     if target in suffixes_dict:
         suffix = suffixes_dict[target]
         files_list = [
@@ -63,6 +65,7 @@ def generate_file_list(genomes_dir, genome_ids, target, suffixes_dict):
 
 
 def is_SSU(record):
+    """Return true if the record is a 16S sequence based on description"""
     return any(desc in record.description for desc in SSU_DESCRIPTIONS)
 
 
@@ -72,8 +75,11 @@ def has_valid_seq(record):
 
 
 def fasta_reader(fa, q, *filters):
+    # TO DO
+    # Check packing/unpacking
+    # Should this be just a list, even if it's empty?
     """
-    Reader worker for the faa file in the specified q(ueue)
+    Reader worker for the fa file in the specified q(ueue)
 
     Applies a filter on the sequence length > 1. This
     is there to parse out
@@ -84,13 +90,13 @@ def fasta_reader(fa, q, *filters):
 
     The optional `filters` can be any number of callables that can
     be applied to a SeqRecord object. Each should return a single
-    boolean True or False, if the record is to be kept: True to
-    keep False to discard. If a record must be kept, all filters
+    boolean True or False, if the record is to be kept. True to
+    keep, False to discard. If a record must be kept, all filters
     should return True. If one fails, the record is skipped.
 
 
     Arguments:
-      faa: Path obj: The Path representation of the faa to read
+      fa: Path obj: The Path representation of the fasta to read
       q: Queue obj: A multiprocessing.Manager.Queue() instance
       *filters: callables: Filtering rules that apply a test to
       the record object. They should return a single True or
@@ -100,8 +106,8 @@ def fasta_reader(fa, q, *filters):
     Return:
         seq_dict: dict: Dictionary that holds seq descriptions as seq ids
         and sequences.
-        A 'skipped' key is there to also gather sequences that were
-        skipped due to the length cutoff as a list. Of the form
+        A 'skipped' key is there to also gather sequence ids that were
+        skipped due to the filtering. Of the form
         {
             seq.description : sequence,
                 ...,
@@ -125,9 +131,6 @@ def fasta_reader(fa, q, *filters):
     return seq_dict
 
 
-##
-
-
 def writer(q, out_fp):
     """
     Writer worker that handles writing to files fed from the reader
@@ -136,10 +139,8 @@ def writer(q, out_fp):
     out_fp is gzipped to save space.
 
     Arguments:
-    q: mp.Queue() obj: A queue
-    out_fp: Path obj: Path to output.fa.gz
-    skipped_fp: Path obj: Path to a plain text file that holds all
-      identifiers of sequences that were skipped.
+      q: mp.Queue() obj: A queue
+      out_fp: Path obj: Path to output.fa.gz
 
     Return:
       -
@@ -147,7 +148,7 @@ def writer(q, out_fp):
     with gzip.open(out_fp, "wt") as fout:
         while 1:
             m = q.get()
-            if m == "killed":
+            if m == "kill":
                 break
             for k, v in m.items():
                 if k == "skipped":
@@ -162,17 +163,15 @@ def chunkify(files_list, chunksize=1000):
     """
     Create a list of chunks.
 
-    files_list is a list of Path filepaths
-    Each chunk is a list itself, with size chunksize.
+    Each chunk is a list itself, with size `chunksize`.
 
     Arguments:
       files_list: list: A list of Path objects
-      chunksize: int:
-        Size of each chunk
+      chunksize: int: Size of each chunk
 
     Return:
       chunks: list: A list of lists. Each nested list has size
-        chunksize.
+        `chunksize`.
     """
     chunks = []
     for i in range(0, len(files_list), chunksize):
@@ -182,14 +181,17 @@ def chunkify(files_list, chunksize=1000):
 
 
 def create_jobs_list(chunks, outdir, *filters):
+    # TO DO
+    # Figure out the packing/unpacking
     """
     Create a list of dictionaries that hold information for the given
     chunks
 
     Arguments:
-    chunks: list: A list of lists. Each nested list contains the
-    filepaths to be processed
-    outdir: Path object: The directory where results will be written
+      chunks: list: A list of lists. Each nested list contains the
+      filepaths to be processed
+      outdir: Path object: The directory where results will be written
+      filters: Callables
 
     Return:
     jobs_list: list: A list of dictionaries that holds information for
@@ -197,9 +199,9 @@ def create_jobs_list(chunks, outdir, *filters):
       [
         {'chunk_id'  : int,         (0,1,2,...)
          'out_fp'    : Path object, (outdir/chunk_<chunk_id>.fa.gz)
-         'skipped_fp': Path object, (outdir/<chunk_id>.skipped.txt)
          'fastas'    : list of Path objects,
                        ([PosixPath('path/to/PATRIC.faa'),...])
+         'filters'   : list of functions
         }
       ]
 
@@ -215,6 +217,7 @@ def create_jobs_list(chunks, outdir, *filters):
             "chunk_id": chunk_id,
             "fastas": chunk_fastas,
             "out_fp": out_fp,
+            # Should there be an if filters or if len(filters) != 0 ?
             "filters": [f for f in filters],
         }
 
@@ -222,24 +225,28 @@ def create_jobs_list(chunks, outdir, *filters):
     return jobs_list
 
 
+# https://stackoverflow.com/a/13530258
 def process_chunk(chunk_dict):
     """
     Multiprocessing of a single chunk.
+
+    This spawns 4 processes: 1 is dedicated to writing and 3 are reading.
+    This is to ensure that the file being written is locked.
     """
     manager = mp.Manager()
     q = manager.Queue()
 
     # TO DO
-    # Check how to play better without hardcoding this value
+    # Avoid hardcoding this value
     with mp.Pool(4) as mpool:
-        # 1 dedicated process to write - avoid locking
+        # 1 dedicated process to write
         watcher = mpool.apply_async(writer, (q, chunk_dict["out_fp"]))
 
         # The rest 3 are reading
         jobs = []
-        for faa in chunk_dict["fastas"]:
+        for fa in chunk_dict["fastas"]:
             job = mpool.apply_async(
-                fasta_reader, (faa, q, chunk_dict["filters"])
+                fasta_reader, (fa, q, chunk_dict["filters"])
             )
             jobs.append(job)
 
@@ -253,11 +260,16 @@ def process_chunk(chunk_dict):
 
 
 def collect_sequences(files_list, outdir, *filters, nthreads=2):
+    """Start nthreads that each spawns a multiprocessing pool of 4
 
+    Yeah, this is weird. Probably a threads-only based thing would
+    be better
+    """
     chunks = chunkify(files_list)
 
     job_dicts = create_jobs_list(chunks, outdir, *filters)
 
+    # Restrict cpu usage
     max_cpus = mp.cpu_count()
     if nthreads * 4 > max_cpus:
         _logger.info("Too many threads provided ( {} )".format(nthreads))
@@ -268,7 +280,7 @@ def collect_sequences(files_list, outdir, *filters, nthreads=2):
         use_threads = nthreads
         _logger.info("Using {} threads".format(use_threads))
 
-    # Pool is concurrent.futures.PoolExecutor
+    # tPool is concurrent.futures.PoolExecutor
     # It allows for children processes
     # to spawn their own pools, even multiprocessing.Pool
     # see https://stackoverflow.com/a/61470465
@@ -280,14 +292,13 @@ def collect_sequences(files_list, outdir, *filters, nthreads=2):
             for _ in a:
                 counter += 1
             _logger.info(
-                "Finished {} / {} chunks".format(
-                    counter, len(chunks)
-                )
+                "Finished {} / {} chunks".format(counter, len(chunks))
             )
     return
 
 
 def concatenate_chunk_files(chunks_dir, output_path, cleanup=True):
+    """Gather all files in one"""
     _logger.info("Concatenatating all sequence files")
     files_counter = 0
     seq_counter = 0
