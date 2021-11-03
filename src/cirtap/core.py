@@ -24,6 +24,7 @@ from cirtap.collect import (
     collect_sequences,
     concatenate_chunk_files,
 )
+from cirtap.best import select_best
 from cirtap.mailer import send_start_mail, send_exit_mail
 
 __author__ = "papanikos"
@@ -418,9 +419,101 @@ def collect(
     )
 
 
+@click.command()
+@click.argument(
+    "output-path",
+    type=pathlib.Path,
+)
+@click.option(
+    "-i",
+    "--index-path",
+    type=pathlib.Path,
+    required=True,
+    help="Path to the index file",
+)
+@click.option(
+    "-d",
+    "--db-dir",
+    type=pathlib.Path,
+    required=True,
+    help="Path to the local mirror. Must contain a `RELEASE_NOTES` directory "
+    "and a `genomes` directory",
+)
+@click.option(
+    "--thresh",
+    type=int,
+    help="Integer threshold for including a genome based on "
+    "completeness and contamination stats. This is useed as "
+    "completeness - 5*contamination > thresh",
+    default=70,
+    show_default=True,
+)
+@click.option(
+    "--ncbi-db",
+    type=pathlib.Path,
+    help="Path to the taxa.sqlite created by ete3",
+    default=pathlib.Path.home() / pathlib.Path(".etetoolkit/taxa.sqlite"),
+    show_default=True,
+)
+@click.option(
+    "--loglevel",
+    default="INFO",
+    help="Define loglevel",
+    show_default=True,
+    required=False,
+)
+@click.option(
+    "--logfile",
+    help="Write logging information in this file",
+    show_default=True,
+    required=False,
+)
+def best(db_dir, index_path, output_path, thresh, ncbi_db, loglevel, logfile):
+    """
+    Select best genomes based on stats retrieved from genome_summary
+
+    Results are written in the provided output_path and include tables
+    containing genome ids with their stats and lineages attached
+    """
+    setup_logging(loglevel, logfile)
+
+    genomes_dir = db_dir / pathlib.Path("genomes")
+    notes_dir = db_dir / pathlib.Path("RELEASE_NOTES")
+    genome_summary = notes_dir / pathlib.Path("genome_summary")
+    genome_lineage = notes_dir / pathlib.Path("genome_lineage")
+    if not all(
+        p.resolve().exists()
+        for p in [notes_dir, genome_summary, genome_lineage, genomes_dir]
+    ):
+        _logger.error("Please provide a valid db path. ")
+        _logger.error(
+            "This must contain "
+            "a RELEASE_NOTES directory with `genome_summary` and "
+            "`genome_lineage` files and a separate `genomes` dir "
+            "where all genome files are stored"
+        )
+        sys.exit(1)
+
+    genome_ids = select_genome_ids(index_path, "patric_genome")
+    _logger.info(
+        "Loaded {} valid genome ids from the index".format(len(genome_ids))
+    )
+
+    select_best(
+        genome_summary,
+        genome_lineage,
+        genome_ids,
+        ncbi_db,
+        thresh,
+        output_path,
+    )
+    _logger.info("Done! Results are in: {}".format(output_path.resolve()))
+
+
 cli.add_command(mirror)
 cli.add_command(index)
 cli.add_command(collect)
+cli.add_command(best)
 
 
 if __name__ == "__main__":
