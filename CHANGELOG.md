@@ -11,4 +11,7 @@ and conda
 from installed data
 - New subcommand best, to create tables of best genomes per taxonomic rank
 based on the available metadata from `genome_summary`
+- New subcommand pack to create a gzipped archive from a provided list of
+genome ids in a file.
 - Fix mirror for better error handling and retrying
+
