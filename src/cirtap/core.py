@@ -25,6 +25,7 @@ from cirtap.collect import (
     concatenate_chunk_files,
 )
 from cirtap.best import select_best
+from cirtap.pack import pack_genome_data
 from cirtap.mailer import send_start_mail, send_exit_mail
 
 __author__ = "papanikos"
@@ -510,10 +511,57 @@ def best(db_dir, index_path, output_path, thresh, ncbi_db, loglevel, logfile):
     _logger.info("Done! Results are in: {}".format(output_path.resolve()))
 
 
+@click.command()
+@click.option(
+    "-g",
+    "--genomes-dir",
+    type=pathlib.Path,
+    required=True,
+    help="Path to the genomes directory containing all data",
+)
+@click.option(
+    "-i",
+    "--input-list",
+    type=pathlib.Path,
+    help="Single column file containing one genome id per line",
+    required=True,
+)
+@click.option(
+    "-o",
+    "--output",
+    type=pathlib.Path,
+    help="Output gzipped file to write. For now only gzip compression is "
+    "supported",
+    required=True,
+)
+@click.option(
+    "--loglevel",
+    default="INFO",
+    help="Define loglevel",
+    show_default=True,
+    required=False,
+)
+@click.option(
+    "--logfile",
+    help="Write logging information in this file",
+    show_default=True,
+    required=False,
+)
+def pack(genomes_dir, input_list, output, loglevel, logfile):
+    """Create a gzipped tar archive from a list of genome ids in a file
+
+    For now the output specified is a tar.gz file, even if you don't name it
+    as such.
+    """
+    setup_logging(loglevel, logfile)
+    pack_genome_data(genomes_dir, input_list, output)
+
+
 cli.add_command(mirror)
 cli.add_command(index)
 cli.add_command(collect)
 cli.add_command(best)
+cli.add_command(pack)
 
 
 if __name__ == "__main__":
