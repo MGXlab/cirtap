@@ -143,32 +143,35 @@ def check_cache_dir(cache_dir):
 #    wait=tenacity.wait.wait_exponential(multiplier=1, min=10, max=60),
 #    stop=tenacity.stop.stop_after_attempt(3),
 # )
-def sync_single_dir(genomes_dir, genome_id, retries=3, write_info=True):
+def sync_single_dir(genomes_dir, genome_id, attempts=3, write_info=True):
     """Download/update all info for the genome id"""
 
     remote_dirname = f"genomes/{genome_id}"
 
     local_dirpath = genomes_dir / pathlib.Path(genome_id)
-    if not local_dirpath.exists():
-        local_dirpath.mkdir()
-
+    # get_local_info should returns None if either the local_dirpath is
+    # not there or the file itself
     local_info = get_local_info(local_dirpath)
 
     # This loop should raise after attempt 3 and break the thing
     # no matter what
     # So no genome id will be there
-    for attempt in range(1, retries + 1):
+    for attempt in range(1, attempts + 1):
         try:
             with ftplib.FTP(PATRIC_FTP) as ftp:
                 ftp.login()
                 remote_info = get_remote_dir_timestamps(ftp, remote_dirname)
                 targets = filter_files_on_mdtm(remote_info, local_info)
-                missing_files = get_missing_files(local_dirpath, list(remote_info.keys()))
+                missing_files = get_missing_files(
+                    local_dirpath, list(remote_info.keys())
+                )
 
                 if len(missing_files) != 0:
-                       targets.extend(missing_files)
+                    targets.extend(missing_files)
 
                 if len(targets) != 0:
+                    # Create the dir only if there is something to download
+                    local_dirpath.mkdir(exist_ok=True)
                     download_genome_targets(ftp, local_dirpath, targets)
                 else:
                     _logger.debug("{} is up to date".format(genome_id))
@@ -183,9 +186,30 @@ def sync_single_dir(genomes_dir, genome_id, retries=3, write_info=True):
 
             break
 
-        # Catch ftplib errors
-        except ftplib.all_errors as ftp_err:
-            if attempt == retries + 1:
+        # Specific handling of the '550 - No such file or directory'
+        # Breaks and returns the genome_id
+        except ftplib.error_perm as ftp_err:
+            if str(ftp_err).startswith("550"):
+                _logger.debug(
+                    "Skipping {} - No remote dir found".format(genome_id)
+                )
+                break
+
+        # Try to catch CTRL-C if user doesn't want to proceed
+        except KeyboardInterrupt:
+            _logger.debug("Ctrl+C signal detected")
+            _logger.debug(
+                "Removing directory that might contain corrupted files "
+                "at {}".format(local_dirpath)
+            )
+            shutil.rmtree(local_dirpath.resolve())
+            break
+
+        # For any other exception e
+        # Retry until number of specified attempts and raise eventually
+        # Capture text in the generic Exception class
+        except Exception as e:
+            if attempt == attempts:
                 _logger.debug("Failed syncing {}".format(genome_id))
                 _logger.debug(
                     "Removing directory that might contain corrupted files "
@@ -195,26 +219,12 @@ def sync_single_dir(genomes_dir, genome_id, retries=3, write_info=True):
                 raise
             else:
                 _logger.debug("Failed syncing  {}".format(genome_id))
-                _logger.debug("Error was : {}".format(ftp_err))
+                _logger.debug("Error was : {}".format(e))
                 attempt += 1
                 _logger.debug(
                     "Sleeping for {} s before retrying".format(attempt * 60)
                 )
                 time.sleep(attempt * 60)
-
-        # Catch CTRL-C if user doesn't want to proceed
-        except KeyboardInterrupt:
-            _logger.debug("Ctrl+C signal detected")
-            _logger.debug(
-                "Removing directory that might contain corrupted files "
-                "at {}".format(local_dirpath)
-            )
-
-            shutil.rmtree(local_dirpath.resolve())
-            break
-        # For any other exception reraise
-        except:
-            raise
 
     return genome_id
 
