@@ -19,13 +19,14 @@ Usage: cirtap [OPTIONS] COMMAND [ARGS]...
 
 Options:
   --version   Show the version and exit.
-  -h, --help  Show this message and exit.
+  --help  Show this message and exit.
 
 Commands:
   best     Select best genomes based on stats retrieved from genome_summary
   collect  Create sequence sets based on the installed files
   index    Create an index of contents for all directories
   mirror   Mirror all data from ftp.patricbrc.org in the specified DB_DIR
+  pack     Create a gzipped tar archive from a list of genome ids in a file
 ```
 
 ## Quickstart
