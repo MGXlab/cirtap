@@ -229,27 +229,27 @@ def mirror(
         except:
             _logger.debug("Failed to send email")
 
-    # Testing
-    # ten_targets = [
-    #    "100053.5",
-    #    "100.11",
-    #    "100053.4",
-    #    "100.9",
-    #    "1123738.3",
-    #    "1000562.3",
-    #    "100053.8",
-    #    "469009.4",
-    #    "1309411.5",
-    #    "100053.6",
-    # ]
-    # genome_jobs = [job for job in genome_jobs if job in ten_targets]
+#     Testing
+#    ten_targets = [
+#        "100053.5",
+#        "1006155.5", # Missing
+#        "2030827.47", # Permission denied 
+#        "100.9",
+#        "1123738.3",
+#        "1000562.3",
+#        "100053.8",
+#        "469009.4",
+#        "1309411.5",
+#        "100053.6",
+#     ]
+#    genome_jobs = [job for job in genome_jobs if job in ten_targets]
 
     try:
         if (
             len(genome_jobs) != 0 and check_genomes is True
         ) or force_check is True:
             finished_jobs = mirror_genomes_dir(
-                genome_jobs, genomes_dir, jobs, progress_bar=progress
+                genome_jobs, genomes_dir, cache_dir, jobs, progress_bar=progress
             )
             new_genomes_processed = processed_genomes.union(set(finished_jobs))
             processed_genomes_txt = cache_dir / pathlib.Path(

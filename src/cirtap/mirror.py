@@ -186,19 +186,17 @@ def sync_single_dir(genomes_dir, genome_id, attempts=3, write_info=True):
 
             break
 
-        # Specific handling of the '550 - No such file or directory'
+        # Specific handling of the '550 - Missing dir or permission denied'
         # Breaks and returns the genome_id
         except ftplib.error_perm as ftp_err:
             if str(ftp_err).startswith("550"):
-                _logger.debug(
-                    "Skipping {} - No remote dir found".format(genome_id)
-                )
+                _logger.debug("Skipping {} ( {} )".format(genome_id, ftp_err))
                 break
 
         # Try to catch CTRL-C if user doesn't want to proceed
         except KeyboardInterrupt:
-            _logger.debug("Ctrl+C signal detected")
-            _logger.debug(
+            _logger.error("Ctrl+C signal detected")
+            _logger.error(
                 "Removing directory that might contain corrupted files "
                 "at {}".format(local_dirpath)
             )
@@ -210,19 +208,22 @@ def sync_single_dir(genomes_dir, genome_id, attempts=3, write_info=True):
         # Capture text in the generic Exception class
         except Exception as e:
             if attempt == attempts:
-                _logger.debug("Failed syncing {}".format(genome_id))
-                _logger.debug(
+                _logger.error("Failed syncing {}".format(genome_id))
+                _logger.error(
                     "Removing directory that might contain corrupted files "
                     "at {}".format(local_dirpath)
                 )
                 shutil.rmtree(local_dirpath.resolve())
                 raise
             else:
-                _logger.debug("Failed syncing  {}".format(genome_id))
-                _logger.debug("Error was : {}".format(e))
+                _logger.warning(
+                    "Attempt {} / {} for {} failed ( {} )".format(
+                        attempt, attempts, genome_id, e
+                    )
+                )
                 attempt += 1
-                _logger.debug(
-                    "Sleeping for {} s before retrying".format(attempt * 60)
+                _logger.warning(
+                    "Sleeping for {}s before retrying".format(attempt * 60)
                 )
                 time.sleep(attempt * 60)
 
@@ -253,21 +254,33 @@ def create_genome_jobs(genome_summary, genomes_dir, processed_genomes=None):
 
 
 def mirror_genomes_dir(
-    all_genome_jobs, local_genomes_dir, procs=1, progress_bar=True
+    all_genome_jobs, local_genomes_dir, cache_dir, procs=1, progress_bar=True,
 ):
 
     parallel_sync = partial(
-        sync_single_dir, local_genomes_dir, write_info=True, retries=3
+        sync_single_dir, local_genomes_dir, write_info=True, attempts=3
     )
 
     results = []
-    with mp.Pool(processes=procs) as pool:
-        if progress_bar:
-            pbar = tqdm(total=len(all_genome_jobs))
-            for res in pool.imap_unordered(parallel_sync, all_genome_jobs):
-                pbar.update()
-                results.append(res)
+    try:
+        with mp.Pool(processes=procs) as pool:
+            if progress_bar:
+                pbar = tqdm(total=len(all_genome_jobs))
+                for res in pool.imap_unordered(parallel_sync, all_genome_jobs):
+                    pbar.update()
+                    results.append(res)
+            else:
+                for res in pool.imap_unordered(parallel_sync, all_genome_jobs):
+                    results.append(res)
+    except Exception:
+        _logger.error("An error occured. Writing processed_genomes to .cache")
+        processed_genomes_txt = cache_dir / pathlib.Path("processed_genomes.txt")
+        if processed_genomes_txt.exists():
+            open_mode = 'a'
         else:
-            for res in pool.imap_unordered(parallel_sync, all_genome_jobs):
-                results.append(res)
+            open_mode = 'w'
+        with open(processed_genomes_txt, mode=open_mode) as fout:
+            for genome_id in results:
+                fout.write("{}\n".format(genome_id))
+        raise
     return results
